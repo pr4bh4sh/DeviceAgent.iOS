@@ -129,8 +129,24 @@
                       BOOL value = [[SpringBoard application] shouldDismissAlertsAutomatically];
                       NSDictionary *json = @{@"is_dismissing_alerts_automatically" : @(value)};
                       [response respondWithJSON:json];
-                  }]
-             ];
+                  }],
+             
+             [CBXRoute get:endpoint(@"/screenshot", 1.0)
+                 withBlock:^(RouteRequest *request,
+                             NSDictionary *body,
+                             RouteResponse *response) {
+
+                     NSError *__autoreleasing*error;
+                     NSData *screenshotData = [XCUIScreen.mainScreen screenshotDataForQuality:1 rect:CGRectNull error:error];
+                     if (nil == screenshotData) {
+                       @throw [CBXException withFormat:@"Cannot take screenshot from the device"];
+                     }
+                     NSString *screenshot = [screenshotData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+                     
+
+                     [response respondWithJSON:@{@"value": screenshot}];
+             }]
+        ];
 }
 
 @end
