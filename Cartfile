@@ -3,3 +3,5 @@ github "specta/expecta" "master"
 github "jmoody/specta" "feature/do-not-create-sharedExampleGroup-instances-in-initialize"
 github "erikdoe/ocmock" "master"
 github "CocoaLumberjack/CocoaLumberjack"
+# Used by screenshots broadcaster
+github "robbiehanson/CocoaAsyncSocket"

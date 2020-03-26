@@ -9,10 +9,18 @@
 #import "CBXLogging.h"
 #import "CBXOrientation.h"
 #import "CBXRoute.h"
+#import "FBWebDriverAgent/FBTCPSocket.h"
+#import "FBWebDriverAgent/FBMjpegServer.h"
+#import "FBWebDriverAgent/FBConfiguration.h"
+
+
+
 
 @interface CBXCUITestServer ()
 @property (atomic, strong) RoutingHTTPServer *server;
 @property (atomic, assign) BOOL isFinishedTesting;
+@property (nonatomic, nullable) FBTCPSocket *screenshotsBroadcaster;
+@property (atomic, assign) NSUInteger mjpegPort;
 
 + (CBXCUITestServer *)sharedServer;
 - (id)init_private;
@@ -91,13 +99,23 @@ static NSString *serverName = @"CalabashXCUITestServer";
     
     NSString *portNumberString = [CBXCUITestServer valueFromArguments: NSProcessInfo.processInfo.arguments
                                                    forKey: @"--port"];
+    
+    NSString *mjpegPortNumberString = [CBXCUITestServer valueFromArguments: NSProcessInfo.processInfo.arguments
+                                                   forKey: @"--mjpeg-server-port"];
+    
     NSUInteger port = (NSUInteger)[portNumberString integerValue];
+    self.mjpegPort = (NSUInteger)[mjpegPortNumberString integerValue];
     
     if (port == 0) {
       [self.server setPort:CBX_DEFAULT_SERVER_PORT];
     } else {
-        [self.server setPort:port];
+      [self.server setPort:port];
     }
+    
+    
+//    if (self.mjpegPort == 0) {
+//        self.mjpegPort = CBX_DEFAULT_MJPEG_SERVER_PORT;
+//    }
     
     DDLogDebug(@"Attempting to start the DeviceAgent server");
     serverStarted = [self attemptToStartWithError:&error];
@@ -111,6 +129,9 @@ static NSString *serverName = @"CalabashXCUITestServer";
           serverName,
           [UIDevice currentDevice].wifiIPAddress,
           [self.server port]);
+    
+    [self initScreenshotsBroadcaster];
+
 
     DDLogDebug(@"Disabling screenshots in NSUserDefaults");
     [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"DisableScreenshots"];
@@ -156,6 +177,48 @@ static NSString *serverName = @"CalabashXCUITestServer";
     }
     return YES;
 }
+
+- (void)initScreenshotsBroadcaster
+{
+  [self readMjpegSettingsFromEnv];
+  self.screenshotsBroadcaster = [[FBTCPSocket alloc]
+                                 initWithPort:(uint16_t)FBConfiguration.mjpegServerPort];
+  self.screenshotsBroadcaster.delegate = [[FBMjpegServer alloc] init];
+  NSError *error;
+  if (![self.screenshotsBroadcaster startWithError:&error]) {
+      DDLogDebug(@"Cannot init screenshots broadcaster service on port %ld. Original error: %@", (long)FBConfiguration.mjpegServerPort, [error description]);
+      
+//    [FBLogger logFmt:@"Cannot init screenshots broadcaster service on port %@. Original error: %@", @(FBConfiguration.mjpegServerPort), error.description];
+    self.screenshotsBroadcaster = nil;
+  }
+}
+
+- (void)stopScreenshotsBroadcaster
+{
+  if (nil == self.screenshotsBroadcaster) {
+    return;
+  }
+
+  [self.screenshotsBroadcaster stop];
+}
+
+- (void)readMjpegSettingsFromEnv
+{
+  NSDictionary *env = NSProcessInfo.processInfo.environment;
+  NSString *scalingFactor = [env objectForKey:@"MJPEG_SCALING_FACTOR"];
+  if (scalingFactor != nil && [scalingFactor length] > 0) {
+    [FBConfiguration setMjpegScalingFactor:[scalingFactor integerValue]];
+  }
+  NSString *screenshotQuality = [env objectForKey:@"MJPEG_SERVER_SCREENSHOT_QUALITY"];
+  if (screenshotQuality != nil && [screenshotQuality length] > 0) {
+    [FBConfiguration setMjpegServerScreenshotQuality:[screenshotQuality integerValue]];
+  }
+  NSString *frameRate = [env objectForKey:@"MJPEG_SERVER_FRAMERATE"];
+  if (frameRate != nil && [frameRate length] > 0) {
+    [FBConfiguration setMjpegServerFramerate:[frameRate integerValue]];
+  }
+}
+
 
 /*
  *  Use objc runtime to get all classes inheriting implementing CBRoute.
